@@ -2244,6 +2244,13 @@ var fairygui;
             }
             return null;
         };
+        Object.defineProperty(GComponent.prototype, "transitions", {
+            get: function () {
+                return this._transitions;
+            },
+            enumerable: true,
+            configurable: true
+        });
         GComponent.prototype.isChildInView = function (child) {
             if (this._rootContainer.scrollRect != null) {
                 return child.x + child.width >= 0 && child.x <= this.width
@@ -6867,9 +6874,9 @@ var fairygui;
             _this._reversed = false;
             _this._repeatedCount = 0;
             //comment out below line before 5.1.0
-            if (!egret.nativeRender) {
-                _this.$renderNode = new egret.sys.NormalBitmapNode();
-            }
+            //  if (!egret.nativeRender) {
+            _this.$renderNode = new egret.sys.NormalBitmapNode();
+            //  }
             //comment out below line after 5.1.0
             //this.$renderNode = new egret.sys.BitmapNode();
             _this.touchEnabled = false;
@@ -6877,7 +6884,7 @@ var fairygui;
             return _this;
         }
         MovieClip.prototype.createNativeDisplayObject = function () {
-            this.$nativeDisplayObject = new egret_native.NativeDisplayObject(11 /* BITMAP_TEXT */);
+            // this.$nativeDisplayObject = new egret_native.NativeDisplayObject(egret_native.NativeObjectType.BITMAP_TEXT);
         };
         Object.defineProperty(MovieClip.prototype, "frames", {
             get: function () {

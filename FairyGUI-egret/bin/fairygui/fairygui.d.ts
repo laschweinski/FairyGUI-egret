@@ -445,6 +445,7 @@ declare module fairygui {
         adjustRadioGroupDepth(obj: GObject, c: Controller): void;
         getTransitionAt(index: number): Transition;
         getTransition(transName: string): Transition;
+        readonly transitions: Array<Transition>;
         isChildInView(child: GObject): boolean;
         getFirstChildInView(): number;
         readonly scrollPane: ScrollPane;
