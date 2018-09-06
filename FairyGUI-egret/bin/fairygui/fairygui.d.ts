@@ -2080,6 +2080,7 @@ declare module fairygui {
         getItemByName(resName: string): PackageItem;
         getItemAssetByName(resName: string): any;
         getItemAsset(item: PackageItem): any;
+        getItemAssetImpl(item: PackageItem): any;
         private createSpriteTexture(sprite);
         private createSubTexture(atlasTexture, uvRect);
         private loadMovieClip(item);

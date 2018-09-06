@@ -372,6 +372,14 @@ module fairygui {
         }
 
         public getItemAsset(item: PackageItem): any {
+            let ret : any = this.getItemAssetImpl(item );
+            if (ret == null ){
+                console.error("could not find the pack " + JSON.stringify(item) );
+            }
+            return ret;
+        }
+
+        public getItemAssetImpl(item: PackageItem): any {
             switch (item.type) {
                 case PackageItemType.Image:
                     if (!item.decoded) {

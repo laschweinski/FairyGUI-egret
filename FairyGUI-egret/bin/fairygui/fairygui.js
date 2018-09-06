@@ -15891,6 +15891,13 @@ var fairygui;
             return this.getItemAsset(pi);
         };
         UIPackage.prototype.getItemAsset = function (item) {
+            var ret = this.getItemAssetImpl(item);
+            if (ret == null) {
+                console.error("could not find the pack " + JSON.stringify(item));
+            }
+            return ret;
+        };
+        UIPackage.prototype.getItemAssetImpl = function (item) {
             switch (item.type) {
                 case fairygui.PackageItemType.Image:
                     if (!item.decoded) {
