@@ -87,6 +87,9 @@ module fairygui {
         }
 
         public set name(value: string) {
+            if (this._displayObject!=null ){
+                this._displayObject.name = value;
+            }
             this._name = value;
         }
 
