@@ -1172,6 +1172,9 @@ var fairygui;
                 var cf = new egret.ColorMatrixFilter(cm.matrix);
                 this.filters = [cf];
             }
+            var str = buffer.readS();
+            if (str != null)
+                this.data = str;
         };
         GObject.prototype.setup_afterAdd = function (buffer, beginPos) {
             buffer.seek(beginPos, 1);
@@ -2244,13 +2247,6 @@ var fairygui;
             }
             return null;
         };
-        Object.defineProperty(GComponent.prototype, "transitions", {
-            get: function () {
-                return this._transitions;
-            },
-            enumerable: true,
-            configurable: true
-        });
         GComponent.prototype.isChildInView = function (child) {
             if (this._rootContainer.scrollRect != null) {
                 return child.x + child.width >= 0 && child.x <= this.width
@@ -3982,7 +3978,7 @@ var fairygui;
                     buffer.position = nextPos;
                 }
             }
-            if (parent != null && this._pageIds.length > 0)
+            if (this.parent != null && this._pageIds.length > 0)
                 this._selectedIndex = 0;
             else
                 this._selectedIndex = -1;
@@ -5423,7 +5419,7 @@ var fairygui;
         GearText.prototype.apply = function () {
             this._owner._gearLocked = true;
             var data = this._storage[this._controller.selectedPageId];
-            if (data != undefined)
+            if (data !== undefined)
                 this._owner.text = data;
             else
                 this._owner.text = this._default;
@@ -5457,7 +5453,7 @@ var fairygui;
         GearIcon.prototype.apply = function () {
             this._owner._gearLocked = true;
             var data = this._storage[this._controller.selectedPageId];
-            if (data != undefined)
+            if (data !== undefined)
                 this._owner.icon = data;
             else
                 this._owner.icon = this._default;
@@ -6079,6 +6075,10 @@ var fairygui;
                         value.f3 = parseFloat(args[2]);
                         value.f4 = parseFloat(args[3]);
                         break;
+                    case TransitionActionType.Text:
+                    case TransitionActionType.Icon:
+                        value.text = args[0];
+                        break;
                 }
             }
         };
@@ -6420,6 +6420,12 @@ var fairygui;
                         if (!startValue.b2)
                             startValue.f2 = item.target.y;
                     }
+                    else {
+                        if (!startValue.b1)
+                            startValue.f1 = item.target.x - this._ownerBaseX;
+                        if (!startValue.b2)
+                            startValue.f2 = item.target.y - this._ownerBaseY;
+                    }
                 }
                 else {
                     if (!startValue.b1)
@@ -6629,6 +6635,12 @@ var fairygui;
                         item.target.filters = arr;
                         break;
                     }
+                case TransitionActionType.Text:
+                    item.target.text = item.value.text;
+                    break;
+                case TransitionActionType.Icon:
+                    item.target.icon = item.value.text;
+                    break;
             }
             item.target._gearLocked = false;
         };
@@ -6724,6 +6736,10 @@ var fairygui;
                     value.f3 = buffer.readFloat();
                     value.f4 = buffer.readFloat();
                     break;
+                case TransitionActionType.Text:
+                case TransitionActionType.Icon:
+                    value.text = buffer.readS();
+                    break;
             }
         };
         Transition.OPTION_IGNORE_DISPLAY_CONTROLLER = 1;
@@ -6750,7 +6766,9 @@ var fairygui;
         TransitionActionType.Shake = 11;
         TransitionActionType.ColorFilter = 12;
         TransitionActionType.Skew = 13;
-        TransitionActionType.Unknown = 14;
+        TransitionActionType.Text = 14;
+        TransitionActionType.Icon = 15;
+        TransitionActionType.Unknown = 16;
         return TransitionActionType;
     }());
     __reflect(TransitionActionType.prototype, "TransitionActionType");
@@ -6783,6 +6801,10 @@ var fairygui;
                     break;
                 case TransitionActionType.Visible:
                     this.value = new TValue_Visible();
+                    break;
+                case TransitionActionType.Text:
+                case TransitionActionType.Icon:
+                    this.value = new TValue_Text();
                     break;
             }
         }
@@ -6831,6 +6853,12 @@ var fairygui;
         return TValue_Shake;
     }());
     __reflect(TValue_Shake.prototype, "TValue_Shake");
+    var TValue_Text = (function () {
+        function TValue_Text() {
+        }
+        return TValue_Text;
+    }());
+    __reflect(TValue_Text.prototype, "TValue_Text");
     var TValue = (function () {
         function TValue() {
             this.f1 = this.f2 = this.f3 = this.f4 = 0;
@@ -6874,9 +6902,9 @@ var fairygui;
             _this._reversed = false;
             _this._repeatedCount = 0;
             //comment out below line before 5.1.0
-            //  if (!egret.nativeRender) {
-            _this.$renderNode = new egret.sys.NormalBitmapNode();
-            //  }
+            if (!egret.nativeRender) {
+                _this.$renderNode = new egret.sys.NormalBitmapNode();
+            }
             //comment out below line after 5.1.0
             //this.$renderNode = new egret.sys.BitmapNode();
             _this.touchEnabled = false;
@@ -6884,7 +6912,7 @@ var fairygui;
             return _this;
         }
         MovieClip.prototype.createNativeDisplayObject = function () {
-            // this.$nativeDisplayObject = new egret_native.NativeDisplayObject(egret_native.NativeObjectType.BITMAP_TEXT);
+            this.$nativeDisplayObject = new egret_native.NativeDisplayObject(11 /* BITMAP_TEXT */);
         };
         Object.defineProperty(MovieClip.prototype, "frames", {
             get: function () {
@@ -15891,13 +15919,6 @@ var fairygui;
             return this.getItemAsset(pi);
         };
         UIPackage.prototype.getItemAsset = function (item) {
-            var ret = this.getItemAssetImpl(item);
-            if (ret == null) {
-                console.error("could not find the pack " + JSON.stringify(item));
-            }
-            return ret;
-        };
-        UIPackage.prototype.getItemAssetImpl = function (item) {
             switch (item.type) {
                 case fairygui.PackageItemType.Image:
                     if (!item.decoded) {
