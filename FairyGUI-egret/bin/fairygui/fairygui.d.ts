@@ -48,7 +48,6 @@ declare module fairygui {
         _name: string;
         _underConstruct: boolean;
         _gearLocked: boolean;
-        _yOffset: number;
         _sizePercentInGroup: number;
         _sizeImplType: number;
         static _gInstanceCounter: number;
@@ -445,7 +444,6 @@ declare module fairygui {
         adjustRadioGroupDepth(obj: GObject, c: Controller): void;
         getTransitionAt(index: number): Transition;
         getTransition(transName: string): Transition;
-        readonly transitions: Array<Transition>;
         isChildInView(child: GObject): boolean;
         getFirstChildInView(): number;
         readonly scrollPane: ScrollPane;
@@ -1376,7 +1374,6 @@ declare module fairygui {
         private _virtualItems;
         private _eventLocked;
         private itemInfoVer;
-        private enterCounter;
         constructor();
         dispose(): void;
         layout: ListLayoutType;
@@ -2080,7 +2077,6 @@ declare module fairygui {
         getItemByName(resName: string): PackageItem;
         getItemAssetByName(resName: string): any;
         getItemAsset(item: PackageItem): any;
-        getItemAssetImpl(item: PackageItem): any;
         private createSpriteTexture(sprite);
         private createSubTexture(atlasTexture, uvRect);
         private loadMovieClip(item);

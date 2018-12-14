@@ -43,7 +43,6 @@ module fairygui {
         private _virtualItems: Array<ItemInfo>;
         private _eventLocked: boolean;
         private itemInfoVer: number = 0; //用来标志item是否在本次处理中已经被重用了
-        private enterCounter: number = 0; //因为HandleScroll是会重入的，这个用来避免极端情况下的死锁
 
         public constructor() {
             super();
@@ -856,12 +855,12 @@ module fairygui {
                 var pos: number = 0;
                 var i: number;
                 if (this._layout == ListLayoutType.SingleColumn || this._layout == ListLayoutType.FlowHorizontal) {
-                    for (i = 0; i < index; i += this._curLineItemCount)
+                    for (i = this._curLineItemCount - 1; i < index; i += this._curLineItemCount)
                         pos += this._virtualItems[i].height + this._lineGap;
                     rect = new egret.Rectangle(0, pos, this._itemSize.x, ii.height);
                 }
                 else if (this._layout == ListLayoutType.SingleRow || this._layout == ListLayoutType.FlowVertical) {
-                    for (i = 0; i < index; i += this._curLineItemCount)
+                    for (i = this._curLineItemCount - 1; i < index; i += this._curLineItemCount)
                         pos += this._virtualItems[i].width + this._columnGap;
                     rect = new egret.Rectangle(pos, 0, ii.width, this._itemSize.y);
                 }
@@ -926,9 +925,9 @@ module fairygui {
                 if (this._loop && this._numItems > 0) {
                     var j: number = this._firstIndex % this._numItems;
                     if (index >= j)
-                        index = this._firstIndex + (index - j);
+                        index = index - j;
                     else
-                        index = this._firstIndex + this._numItems + (j - index);
+                        index = this._numItems - j + index;
                 }
                 else
                     index -= this._firstIndex;
@@ -1319,13 +1318,28 @@ module fairygui {
             if (this._eventLocked)
                 return;
 
-            this.enterCounter = 0;
             if (this._layout == ListLayoutType.SingleColumn || this._layout == ListLayoutType.FlowHorizontal) {
-                this.handleScroll1(forceUpdate);
+                var enterCounter: number = 0;
+                while (this.handleScroll1(forceUpdate)) {
+                    enterCounter++;
+                    forceUpdate = false;
+                    if (enterCounter > 20) {
+                        console.log("FairyGUI: list will never be filled as the item renderer function always returns a different size.");
+                        break;
+                    }
+                }
                 this.handleArchOrder1();
             }
             else if (this._layout == ListLayoutType.SingleRow || this._layout == ListLayoutType.FlowVertical) {
-                this.handleScroll2(forceUpdate);
+                enterCounter = 0;
+                while (this.handleScroll2(forceUpdate)) {
+                    enterCounter++;
+                    forceUpdate = false;
+                    if (enterCounter > 20) {
+                        console.log("FairyGUI: list will never be filled as the item renderer function always returns a different size.");
+                        break;
+                    }
+                }
                 this.handleArchOrder2();
             }
             else {
@@ -1337,13 +1351,7 @@ module fairygui {
 
         private static pos_param: number;
 
-        private handleScroll1(forceUpdate: boolean): void {
-            this.enterCounter++;
-            if (this.enterCounter > 3) {
-                console.log("FairyGUI: list will never be filled as the item renderer function always returns a different size.");
-                return;
-            }
-
+        private handleScroll1(forceUpdate: boolean): boolean {
             var pos: number = this._scrollPane.scrollingPosY;
             var max: number = pos + this._scrollPane.viewHeight;
             var end: boolean = max == this._scrollPane.contentHeight;//这个标志表示当前需要滚动到最末，无论内容变化大小
@@ -1353,15 +1361,15 @@ module fairygui {
             var newFirstIndex: number = this.getIndexOnPos1(forceUpdate);
             pos = GList.pos_param;
             if (newFirstIndex == this._firstIndex && !forceUpdate) {
-                return;
+                return false;
             }
 
             var oldFirstIndex: number = this._firstIndex;
             this._firstIndex = newFirstIndex;
             var curIndex: number = newFirstIndex;
             var forward: boolean = oldFirstIndex > newFirstIndex;
-            var oldCount: number = this.numChildren;
-            var lastIndex: number = oldFirstIndex + oldCount - 1;
+            var childCount: number = this.numChildren;
+            var lastIndex: number = oldFirstIndex + childCount - 1;
             var reuseIndex: number = forward ? lastIndex : oldFirstIndex;
             var curX: number = 0, curY: number = pos;
             var needRender: boolean;
@@ -1472,7 +1480,7 @@ module fairygui {
                 curIndex++;
             }
 
-            for (i = 0; i < oldCount; i++) {
+            for (i = 0; i < childCount; i++) {
                 ii = this._virtualItems[oldFirstIndex + i];
                 if (ii.updateFlag != this.itemInfoVer && ii.obj != null) {
                     if (ii.obj instanceof GButton)
@@ -1482,20 +1490,23 @@ module fairygui {
                 }
             }
 
+            childCount = this._children.length;
+            for (i = 0; i < childCount; i++) {
+                let obj: GObject = this._virtualItems[newFirstIndex + i].obj;
+                if (this._children[i] != obj)
+                    this.setChildIndex(obj, i);
+            }
+
             if (deltaSize != 0 || firstItemDeltaSize != 0)
                 this._scrollPane.changeContentSizeOnScrolling(0, deltaSize, 0, firstItemDeltaSize);
 
             if (curIndex > 0 && this.numChildren > 0 && this._container.y < 0 && this.getChildAt(0).y > -this._container.y)//最后一页没填满！
-                this.handleScroll1(false);
+                return true;
+            else
+                return false;
         }
 
-        private handleScroll2(forceUpdate: boolean): void {
-            this.enterCounter++;
-            if (this.enterCounter > 3) {
-                console.log("FairyGUI: list will never be filled as the item renderer function always returns a different size.");
-                return;
-            }
-
+        private handleScroll2(forceUpdate: boolean): boolean {
             var pos: number = this._scrollPane.scrollingPosX;
             var max: number = pos + this._scrollPane.viewWidth;
             var end: boolean = pos == this._scrollPane.contentWidth;//这个标志表示当前需要滚动到最末，无论内容变化大小
@@ -1505,15 +1516,15 @@ module fairygui {
             var newFirstIndex: number = this.getIndexOnPos2(forceUpdate);
             pos = GList.pos_param;
             if (newFirstIndex == this._firstIndex && !forceUpdate) {
-                return;
+                return false;
             }
 
             var oldFirstIndex: number = this._firstIndex;
             this._firstIndex = newFirstIndex;
             var curIndex: number = newFirstIndex;
             var forward: boolean = oldFirstIndex > newFirstIndex;
-            var oldCount: number = this.numChildren;
-            var lastIndex: number = oldFirstIndex + oldCount - 1;
+            var childCount: number = this.numChildren;
+            var lastIndex: number = oldFirstIndex + childCount - 1;
             var reuseIndex: number = forward ? lastIndex : oldFirstIndex;
             var curX: number = pos, curY: number = 0;
             var needRender: boolean;
@@ -1624,7 +1635,7 @@ module fairygui {
                 curIndex++;
             }
 
-            for (i = 0; i < oldCount; i++) {
+            for (i = 0; i < childCount; i++) {
                 ii = this._virtualItems[oldFirstIndex + i];
                 if (ii.updateFlag != this.itemInfoVer && ii.obj != null) {
                     if (ii.obj instanceof GButton)
@@ -1634,11 +1645,20 @@ module fairygui {
                 }
             }
 
+            childCount = this._children.length;
+            for (i = 0; i < childCount; i++) {
+                let obj: GObject = this._virtualItems[newFirstIndex + i].obj;
+                if (this._children[i] != obj)
+                    this.setChildIndex(obj, i);
+            }
+
             if (deltaSize != 0 || firstItemDeltaSize != 0)
                 this._scrollPane.changeContentSizeOnScrolling(deltaSize, 0, firstItemDeltaSize, 0);
 
             if (curIndex > 0 && this.numChildren > 0 && this._container.x < 0 && this.getChildAt(0).x > - this._container.x)//最后一页没填满！
-                this.handleScroll2(false);
+                return true;
+            else
+                return false;
         }
 
         private handleScroll3(forceUpdate: boolean): void {

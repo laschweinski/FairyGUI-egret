@@ -48,7 +48,6 @@ var fairygui;
             _this._height = 0;
             _this._rawWidth = 0;
             _this._rawHeight = 0;
-            _this._yOffset = 0;
             _this._sizePercentInGroup = 0;
             //Size的实现方式，有两种，0-GObject的w/h等于DisplayObject的w/h。1-GObject的sourceWidth/sourceHeight等于DisplayObject的w/h，剩余部分由scale实现
             _this._sizeImplType = 0;
@@ -894,6 +893,7 @@ var fairygui;
         GObject.prototype.dispose = function () {
             this.removeFromParent();
             this._relations.dispose();
+            this._displayObject = null;
         };
         GObject.prototype.addClickListener = function (listener, thisObj) {
             this.addEventListener(egret.TouchEvent.TOUCH_TAP, listener, thisObj);
@@ -1058,7 +1058,7 @@ var fairygui;
         GObject.prototype.handleXYChanged = function () {
             if (this._displayObject) {
                 var xv = this._x;
-                var yv = this._y + this._yOffset;
+                var yv = this._y;
                 if (this._pivotAsAnchor) {
                     xv -= this._pivotX * this._width;
                     yv -= this._pivotY * this._height;
@@ -3382,7 +3382,6 @@ var fairygui;
                 this._updatingSize = true;
                 this.setSize(w, h);
                 this._updatingSize = false;
-                this.doAlign();
             }
             if (w == 0 || h == 0)
                 return;
@@ -3422,6 +3421,7 @@ var fairygui;
                         }
                         bm.x = charX + lineIndent + Math.ceil(glyph.offsetX * fontScale);
                         bm.y = line.y + charIndent + Math.ceil(glyph.offsetY * fontScale);
+                        bm["$backupY"] = bm.y;
                         bm.texture = glyph.texture;
                         bm.scaleX = fontScale;
                         bm.scaleY = fontScale;
@@ -3433,6 +3433,7 @@ var fairygui;
                     }
                 } //text loop
             } //line loop
+            this.doAlign();
         };
         GTextField.prototype.handleSizeChanged = function () {
             if (this._updatingSize)
@@ -3529,18 +3530,23 @@ var fairygui;
             this.updateTextFormat();
         };
         GTextField.prototype.doAlign = function () {
+            var yOffset;
             if (this._verticalAlign == fairygui.VertAlignType.Top || this._textHeight == 0)
-                this._yOffset = GTextField.GUTTER_Y;
+                yOffset = GTextField.GUTTER_Y;
             else {
                 var dh = this.height - this._textHeight;
                 if (dh < 0)
                     dh = 0;
                 if (this._verticalAlign == fairygui.VertAlignType.Middle)
-                    this._yOffset = Math.floor(dh / 2);
+                    yOffset = Math.floor(dh / 2);
                 else
-                    this._yOffset = Math.floor(dh);
+                    yOffset = Math.floor(dh);
             }
-            this.displayObject.y = this.y + this._yOffset;
+            var cnt = this._bitmapContainer.numChildren;
+            for (var i = 0; i < cnt; i++) {
+                var obj = this._bitmapContainer.getChildAt(i);
+                obj.y = obj["$backupY"] + yOffset;
+            }
         };
         GTextField.prototype.setup_beforeAdd = function (buffer, beginPos) {
             _super.prototype.setup_beforeAdd.call(this, buffer, beginPos);
@@ -7697,6 +7703,8 @@ var fairygui;
             if (this._down) {
                 fairygui.GRoot.inst.nativeStage.removeEventListener(egret.TouchEvent.TOUCH_END, this.__mouseup, this);
                 this._down = false;
+                if (this.displayObject == null)
+                    return;
                 if (this._mode == fairygui.ButtonMode.Common) {
                     if (this.grayed && this._buttonController && this._buttonController.hasPage(GButton.DISABLED))
                         this.setState(GButton.DISABLED);
@@ -8999,7 +9007,6 @@ var fairygui;
             _this._curLineItemCount2 = 0; //只用在页面模式，表示垂直方向的项目数
             _this._virtualListChanged = 0; //1-content changed, 2-size changed
             _this.itemInfoVer = 0; //用来标志item是否在本次处理中已经被重用了
-            _this.enterCounter = 0; //因为HandleScroll是会重入的，这个用来避免极端情况下的死锁
             _this._trackBounds = true;
             _this._pool = new fairygui.GObjectPool();
             _this._layout = fairygui.ListLayoutType.SingleColumn;
@@ -9782,12 +9789,12 @@ var fairygui;
                 var pos = 0;
                 var i;
                 if (this._layout == fairygui.ListLayoutType.SingleColumn || this._layout == fairygui.ListLayoutType.FlowHorizontal) {
-                    for (i = 0; i < index; i += this._curLineItemCount)
+                    for (i = this._curLineItemCount - 1; i < index; i += this._curLineItemCount)
                         pos += this._virtualItems[i].height + this._lineGap;
                     rect = new egret.Rectangle(0, pos, this._itemSize.x, ii.height);
                 }
                 else if (this._layout == fairygui.ListLayoutType.SingleRow || this._layout == fairygui.ListLayoutType.FlowVertical) {
-                    for (i = 0; i < index; i += this._curLineItemCount)
+                    for (i = this._curLineItemCount - 1; i < index; i += this._curLineItemCount)
                         pos += this._virtualItems[i].width + this._columnGap;
                     rect = new egret.Rectangle(pos, 0, ii.width, this._itemSize.y);
                 }
@@ -9842,9 +9849,9 @@ var fairygui;
                 if (this._loop && this._numItems > 0) {
                     var j = this._firstIndex % this._numItems;
                     if (index >= j)
-                        index = this._firstIndex + (index - j);
+                        index = index - j;
                     else
-                        index = this._firstIndex + this._numItems + (j - index);
+                        index = this._numItems - j + index;
                 }
                 else
                     index -= this._firstIndex;
@@ -10191,13 +10198,28 @@ var fairygui;
         GList.prototype.handleScroll = function (forceUpdate) {
             if (this._eventLocked)
                 return;
-            this.enterCounter = 0;
             if (this._layout == fairygui.ListLayoutType.SingleColumn || this._layout == fairygui.ListLayoutType.FlowHorizontal) {
-                this.handleScroll1(forceUpdate);
+                var enterCounter = 0;
+                while (this.handleScroll1(forceUpdate)) {
+                    enterCounter++;
+                    forceUpdate = false;
+                    if (enterCounter > 20) {
+                        console.log("FairyGUI: list will never be filled as the item renderer function always returns a different size.");
+                        break;
+                    }
+                }
                 this.handleArchOrder1();
             }
             else if (this._layout == fairygui.ListLayoutType.SingleRow || this._layout == fairygui.ListLayoutType.FlowVertical) {
-                this.handleScroll2(forceUpdate);
+                enterCounter = 0;
+                while (this.handleScroll2(forceUpdate)) {
+                    enterCounter++;
+                    forceUpdate = false;
+                    if (enterCounter > 20) {
+                        console.log("FairyGUI: list will never be filled as the item renderer function always returns a different size.");
+                        break;
+                    }
+                }
                 this.handleArchOrder2();
             }
             else {
@@ -10206,11 +10228,6 @@ var fairygui;
             this._boundsChanged = false;
         };
         GList.prototype.handleScroll1 = function (forceUpdate) {
-            this.enterCounter++;
-            if (this.enterCounter > 3) {
-                console.log("FairyGUI: list will never be filled as the item renderer function always returns a different size.");
-                return;
-            }
             var pos = this._scrollPane.scrollingPosY;
             var max = pos + this._scrollPane.viewHeight;
             var end = max == this._scrollPane.contentHeight; //这个标志表示当前需要滚动到最末，无论内容变化大小
@@ -10219,14 +10236,14 @@ var fairygui;
             var newFirstIndex = this.getIndexOnPos1(forceUpdate);
             pos = GList.pos_param;
             if (newFirstIndex == this._firstIndex && !forceUpdate) {
-                return;
+                return false;
             }
             var oldFirstIndex = this._firstIndex;
             this._firstIndex = newFirstIndex;
             var curIndex = newFirstIndex;
             var forward = oldFirstIndex > newFirstIndex;
-            var oldCount = this.numChildren;
-            var lastIndex = oldFirstIndex + oldCount - 1;
+            var childCount = this.numChildren;
+            var lastIndex = oldFirstIndex + childCount - 1;
             var reuseIndex = forward ? lastIndex : oldFirstIndex;
             var curX = 0, curY = pos;
             var needRender;
@@ -10324,7 +10341,7 @@ var fairygui;
                 }
                 curIndex++;
             }
-            for (i = 0; i < oldCount; i++) {
+            for (i = 0; i < childCount; i++) {
                 ii = this._virtualItems[oldFirstIndex + i];
                 if (ii.updateFlag != this.itemInfoVer && ii.obj != null) {
                     if (ii.obj instanceof fairygui.GButton)
@@ -10333,17 +10350,20 @@ var fairygui;
                     ii.obj = null;
                 }
             }
+            childCount = this._children.length;
+            for (i = 0; i < childCount; i++) {
+                var obj = this._virtualItems[newFirstIndex + i].obj;
+                if (this._children[i] != obj)
+                    this.setChildIndex(obj, i);
+            }
             if (deltaSize != 0 || firstItemDeltaSize != 0)
                 this._scrollPane.changeContentSizeOnScrolling(0, deltaSize, 0, firstItemDeltaSize);
             if (curIndex > 0 && this.numChildren > 0 && this._container.y < 0 && this.getChildAt(0).y > -this._container.y)
-                this.handleScroll1(false);
+                return true;
+            else
+                return false;
         };
         GList.prototype.handleScroll2 = function (forceUpdate) {
-            this.enterCounter++;
-            if (this.enterCounter > 3) {
-                console.log("FairyGUI: list will never be filled as the item renderer function always returns a different size.");
-                return;
-            }
             var pos = this._scrollPane.scrollingPosX;
             var max = pos + this._scrollPane.viewWidth;
             var end = pos == this._scrollPane.contentWidth; //这个标志表示当前需要滚动到最末，无论内容变化大小
@@ -10352,14 +10372,14 @@ var fairygui;
             var newFirstIndex = this.getIndexOnPos2(forceUpdate);
             pos = GList.pos_param;
             if (newFirstIndex == this._firstIndex && !forceUpdate) {
-                return;
+                return false;
             }
             var oldFirstIndex = this._firstIndex;
             this._firstIndex = newFirstIndex;
             var curIndex = newFirstIndex;
             var forward = oldFirstIndex > newFirstIndex;
-            var oldCount = this.numChildren;
-            var lastIndex = oldFirstIndex + oldCount - 1;
+            var childCount = this.numChildren;
+            var lastIndex = oldFirstIndex + childCount - 1;
             var reuseIndex = forward ? lastIndex : oldFirstIndex;
             var curX = pos, curY = 0;
             var needRender;
@@ -10456,7 +10476,7 @@ var fairygui;
                 }
                 curIndex++;
             }
-            for (i = 0; i < oldCount; i++) {
+            for (i = 0; i < childCount; i++) {
                 ii = this._virtualItems[oldFirstIndex + i];
                 if (ii.updateFlag != this.itemInfoVer && ii.obj != null) {
                     if (ii.obj instanceof fairygui.GButton)
@@ -10465,10 +10485,18 @@ var fairygui;
                     ii.obj = null;
                 }
             }
+            childCount = this._children.length;
+            for (i = 0; i < childCount; i++) {
+                var obj = this._virtualItems[newFirstIndex + i].obj;
+                if (this._children[i] != obj)
+                    this.setChildIndex(obj, i);
+            }
             if (deltaSize != 0 || firstItemDeltaSize != 0)
                 this._scrollPane.changeContentSizeOnScrolling(deltaSize, 0, firstItemDeltaSize, 0);
             if (curIndex > 0 && this.numChildren > 0 && this._container.x < 0 && this.getChildAt(0).x > -this._container.x)
-                this.handleScroll2(false);
+                return true;
+            else
+                return false;
         };
         GList.prototype.handleScroll3 = function (forceUpdate) {
             var pos = this._scrollPane.scrollingPosX;
@@ -12798,8 +12826,8 @@ var fairygui;
             this.updateWidthPercent(percent);
         };
         GSlider.prototype.__gripMouseUp = function (evt) {
-            this._gripObject.displayObject.stage.removeEventListener(egret.TouchEvent.TOUCH_MOVE, this.__gripMouseMove, this);
-            this._gripObject.displayObject.stage.removeEventListener(egret.TouchEvent.TOUCH_END, this.__gripMouseUp, this);
+            evt.currentTarget.removeEventListener(egret.TouchEvent.TOUCH_MOVE, this.__gripMouseMove, this);
+            evt.currentTarget.removeEventListener(egret.TouchEvent.TOUCH_END, this.__gripMouseUp, this);
         };
         GSlider.prototype.__barMouseDown = function (evt) {
             if (!this.changeOnClick)
@@ -16648,8 +16676,8 @@ var fairygui;
         TranslationHelper.translateComponent = function (item) {
             if (TranslationHelper.strings == null)
                 return;
-            var strings = TranslationHelper.strings[item.owner.id + item.id];
-            if (strings == null)
+            var compStrings = TranslationHelper.strings[item.owner.id + item.id];
+            if (compStrings == null)
                 return;
             var elementId, value;
             var buffer = item.rawData;
@@ -16674,7 +16702,7 @@ var fairygui;
                         type = buffer.readByte();
                 }
                 buffer.seek(curPos, 1);
-                if ((value = strings[elementId + "-tips"]) != null)
+                if ((value = compStrings[elementId + "-tips"]) != null)
                     buffer.writeS(value);
                 buffer.seek(curPos, 2);
                 var gearCnt = buffer.readShort();
@@ -16687,13 +16715,13 @@ var fairygui;
                         for (k = 0; k < valueCnt; k++) {
                             page = buffer.readS();
                             if (page != null) {
-                                if ((value = strings[elementId + "-texts_" + k]) != null)
+                                if ((value = compStrings[elementId + "-texts_" + k]) != null)
                                     buffer.writeS(value);
                                 else
                                     buffer.skip(2);
                             }
                         }
-                        if (buffer.readBool() && (value = strings[elementId + "-texts_def"]) != null)
+                        if (buffer.readBool() && (value = compStrings[elementId + "-texts_def"]) != null)
                             buffer.writeS(value);
                     }
                     buffer.position = nextPos;
@@ -16703,11 +16731,11 @@ var fairygui;
                     case fairygui.ObjectType.RichText:
                     case fairygui.ObjectType.InputText:
                         {
-                            if ((value = strings[elementId]) != null) {
+                            if ((value = compStrings[elementId]) != null) {
                                 buffer.seek(curPos, 6);
                                 buffer.writeS(value);
                             }
-                            if ((value = strings[elementId + "-prompt"]) != null) {
+                            if ((value = compStrings[elementId + "-prompt"]) != null) {
                                 buffer.seek(curPos, 4);
                                 buffer.writeS(value);
                             }
@@ -16722,11 +16750,11 @@ var fairygui;
                                 nextPos = buffer.readShort();
                                 nextPos += buffer.position;
                                 buffer.skip(2); //url
-                                if ((value = strings[elementId + "-" + j]) != null)
+                                if ((value = compStrings[elementId + "-" + j]) != null)
                                     buffer.writeS(value);
                                 else
                                     buffer.skip(2);
-                                if ((value = strings[elementId + "-" + j + "-0"]) != null)
+                                if ((value = compStrings[elementId + "-" + j + "-0"]) != null)
                                     buffer.writeS(value);
                                 buffer.position = nextPos;
                             }
@@ -16735,7 +16763,7 @@ var fairygui;
                     case fairygui.ObjectType.Label:
                         {
                             if (buffer.seek(curPos, 6) && buffer.readByte() == type) {
-                                if ((value = strings[elementId]) != null)
+                                if ((value = compStrings[elementId]) != null)
                                     buffer.writeS(value);
                                 else
                                     buffer.skip(2);
@@ -16743,7 +16771,7 @@ var fairygui;
                                 if (buffer.readBool())
                                     buffer.skip(4);
                                 buffer.skip(4);
-                                if (buffer.readBool() && (value = strings[elementId + "-prompt"]) != null)
+                                if (buffer.readBool() && (value = compStrings[elementId + "-prompt"]) != null)
                                     buffer.writeS(value);
                             }
                             break;
@@ -16751,11 +16779,11 @@ var fairygui;
                     case fairygui.ObjectType.Button:
                         {
                             if (buffer.seek(curPos, 6) && buffer.readByte() == type) {
-                                if ((value = strings[elementId]) != null)
+                                if ((value = compStrings[elementId]) != null)
                                     buffer.writeS(value);
                                 else
                                     buffer.skip(2);
-                                if ((value = strings[elementId + "-0"]) != null)
+                                if ((value = compStrings[elementId + "-0"]) != null)
                                     buffer.writeS(value);
                             }
                             break;
@@ -16767,11 +16795,11 @@ var fairygui;
                                 for (j = 0; j < itemCount; j++) {
                                     nextPos = buffer.readShort();
                                     nextPos += buffer.position;
-                                    if ((value = strings[elementId + "-" + j]) != null)
+                                    if ((value = compStrings[elementId + "-" + j]) != null)
                                         buffer.writeS(value);
                                     buffer.position = nextPos;
                                 }
-                                if ((value = strings[elementId]) != null)
+                                if ((value = compStrings[elementId]) != null)
                                     buffer.writeS(value);
                             }
                             break;
