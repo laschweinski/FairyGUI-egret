@@ -73,6 +73,7 @@ module fairygui {
             super.dispose();
 
             this._bitmapFont = null;
+            this._requireRender = false;
         }
 
         public set text(value: string) {
@@ -340,8 +341,7 @@ module fairygui {
             }
 
             this.switchBitmapMode(false);
-
-            this._textField.width = this._widthAutoSize ? 10000 : Math.ceil(this.width);
+            this._textField.width = this._widthAutoSize ? (this.maxWidth <= 0 ? 10000 : this.maxWidth) : Math.ceil(this.width);
             this.updateTextFieldText();
             this._textWidth = Math.ceil(this._textField.textWidth);
             if (this._textWidth > 0)

@@ -2888,6 +2888,7 @@ var fairygui;
         GTextField.prototype.dispose = function () {
             _super.prototype.dispose.call(this);
             this._bitmapFont = null;
+            this._requireRender = false;
         };
         Object.defineProperty(GTextField.prototype, "text", {
             get: function () {
@@ -3175,7 +3176,7 @@ var fairygui;
                 return;
             }
             this.switchBitmapMode(false);
-            this._textField.width = this._widthAutoSize ? 10000 : Math.ceil(this.width);
+            this._textField.width = this._widthAutoSize ? (this.maxWidth <= 0 ? 10000 : this.maxWidth) : Math.ceil(this.width);
             this.updateTextFieldText();
             this._textWidth = Math.ceil(this._textField.textWidth);
             if (this._textWidth > 0)
@@ -7258,6 +7259,13 @@ var fairygui;
             _this.touchChildren = true;
             return _this;
         }
+        Object.defineProperty(UIContainer.prototype, "invertedMatrix", {
+            set: function (matrix) {
+                this._invertedMatrix = matrix;
+            },
+            enumerable: true,
+            configurable: true
+        });
         Object.defineProperty(UIContainer.prototype, "hitArea", {
             get: function () {
                 return this._hitArea;
@@ -7282,7 +7290,10 @@ var fairygui;
                     return null;
             }
             else if (ret == null && this.touchEnabled && this.visible && this._hitArea != null) {
-                var m = this.$getInvertedConcatenatedMatrix();
+                var m = this._invertedMatrix;
+                if (m == null) {
+                    m = this.$getInvertedConcatenatedMatrix();
+                }
                 var localX = m.a * stageX + m.c * stageY + m.tx;
                 var localY = m.b * stageX + m.d * stageY + m.ty;
                 if (this._hitArea.contains(localX, localY))
@@ -7576,12 +7587,15 @@ var fairygui;
                 if (val == GButton.DOWN || val == GButton.SELECTED_OVER || val == GButton.SELECTED_DISABLED) {
                     if (!this._downScaled) {
                         this._downScaled = true;
+                        //复制缩放前的变换矩阵,解决缩放后的 container 计算hitTest.
+                        this._rootContainer.invertedMatrix = this._rootContainer.$getInvertedConcatenatedMatrix().clone();
                         this.setScale(this.scaleX * this._downEffectValue, this.scaleY * this._downEffectValue);
                     }
                 }
                 else {
                     if (this._downScaled) {
                         this._downScaled = false;
+                        this._rootContainer.invertedMatrix = null;
                         this.setScale(this.scaleX / this._downEffectValue, this.scaleY / this._downEffectValue);
                     }
                 }
@@ -10566,7 +10580,7 @@ var fairygui;
                         insertIndex = this.getChildIndex(lastObj) + 1;
                     if (ii.obj == null) {
                         if (this.itemProvider != null) {
-                            url = this.itemProvider(i % this._numItems);
+                            url = this.itemProvider.call(this.callbackThisObj, i % this._numItems);
                             if (url == null)
                                 url = this._defaultItem;
                             url = fairygui.UIPackage.normalizeURL(url);
@@ -11139,8 +11153,6 @@ var fairygui;
             _this._verticalAlign = fairygui.VertAlignType.Top;
             _this._showErrorSign = true;
             _this._color = 0xFFFFFF;
-            _this._gearAnimation = new fairygui.GearAnimation(_this);
-            _this._gearColor = new fairygui.GearColor(_this);
             return _this;
         }
         GLoader.prototype.createDisplayObject = function () {
@@ -11166,6 +11178,8 @@ var fairygui;
             set: function (value) {
                 if (this._url == value)
                     return;
+                //清除旧的url加载的资源
+                this.clearContent();
                 this._url = value;
                 this.loadContent();
                 this.updateGear(7);
@@ -11361,7 +11375,7 @@ var fairygui;
             configurable: true
         });
         GLoader.prototype.loadContent = function () {
-            this.clearContent();
+            //this.clearContent();
             if (!this._url)
                 return;
             if (fairygui.ToolSet.startsWith(this._url, "ui://"))
